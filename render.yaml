@@ -3,8 +3,10 @@ services:
     name: scout-game
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: node server.js
     envVars:
+      - key: NODE_VERSION
+        value: 24.22.1
       - key: PORT
         value: 10000

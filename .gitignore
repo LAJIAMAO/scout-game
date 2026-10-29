@@ -1,3 +1,15 @@
 node_modules/
+runtime/
+data/
+verification/
+releases/
+*.sqlite
+*.sqlite-*
+*.db
+*.log
+*.zip
+.env
+.env.*
+!.env.example
 .DS_Store
 Thumbs.db

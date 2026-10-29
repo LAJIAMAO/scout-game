@@ -1,131 +1,39 @@
-// ai.js - 智能电脑玩家决策引擎
-
-const { analyzeCombo, canBeat, findAllPlayableCombos, evaluateHandCohesion } = require('./rules');
-
-class ScoutAI {
-  /**
-   * 准备阶段决策：评估是否需要翻转整副手牌
-   */
-  static decidePrepare(game, botPlayer) {
-    const currentScore = evaluateHandCohesion(botPlayer.hand);
-
-    // 虚拟翻转计算分数
-    botPlayer.hand.forEach(c => c.flip());
-    const flippedScore = evaluateHandCohesion(botPlayer.hand);
-
-    // 如果原来朝向更好，翻转回去
-    if (currentScore >= flippedScore) {
-      botPlayer.hand.forEach(c => c.flip());
-    }
-
-    game.setReady(botPlayer.id);
+'use strict';
+const R=require('../public/rules');
+// This module accepts only a client perspective: private hands of opponents never enter the policy.
+function candidates(state){
+  const me=state.players.find(p=>p.id===state.myPlayerId),hand=state.myHand,stage=state.currentShow;
+  const out=R.findAllPlayableCombos(hand,stage?.combo).map(c=>({event:'action_show',data:{selectedIndices:c.indices},remaining:hand.filter((_,i)=>!c.indices.includes(i)),removed:c.cards.length,points:stage?.cards.length||0,label:`演出 ${c.combo.label}`}));
+  if(stage&&(state.players.length!==2||me.scoutChips>0))for(const side of stage.cards.length===1?['left']:['left','right'])for(const flip of [false,true])for(let insertIndex=0;insertIndex<=hand.length;insertIndex++){
+    const data={side,flip,insertIndex},v=R.previewScout(hand,stage.cards,data);
+    out.push({event:'action_scout',data,remaining:v.hand,removed:-1,points:0,label:`从${side==='left'?'左':'右'}端挖角${flip?'并翻面':''}，插入第 ${insertIndex+1} 个位置`});
+    if(state.players.length>2&&me.hasScoutAndShow)for(const c of R.findAllPlayableCombos(v.hand,v.combo))out.push({event:'action_scout_and_show',data:{scoutData:data,showIndices:c.indices},remaining:v.hand.filter((_,i)=>!c.indices.includes(i)),removed:c.cards.length-1,points:v.remaining.length,label:`挖角后演出 ${c.combo.label}`});
   }
-
-  /**
-   * 出牌阶段决策：决定执行 Show、Scout 还是 Scout & Show
-   */
-  static decideTurn(game, botPlayer) {
-    const hand = botPlayer.hand;
-    const currentShow = game.currentShow;
-    const playableCombos = findAllPlayableCombos(hand, currentShow ? currentShow.combo : null);
-
-    // 优先检查：如果手牌能一把出完清空，直接出完赢得胜利！
-    const winningCombo = playableCombos.find(c => c.cards.length === hand.length);
-    if (winningCombo) {
-      const indices = [];
-      for (let i = winningCombo.startIndex; i <= winningCombo.endIndex; i++) {
-        indices.push(i);
-      }
-      return game.playShow(botPlayer.id, indices);
-    }
-
-    // 寻找最佳 Scout 插入策略
-    let bestScoutMove = null;
-    let bestScoutGain = -999;
-
-    if (currentShow && currentShow.cards && currentShow.cards.length > 0) {
-      const sides = ['left', 'right'];
-      const baseCohesion = evaluateHandCohesion(hand);
-
-      for (const side of sides) {
-        const sourceCard = (side === 'left') ? currentShow.cards[0] : currentShow.cards[currentShow.cards.length - 1];
-        if (!sourceCard) continue;
-
-        for (const flip of [false, true]) {
-          const testCard = sourceCard.clone();
-          if (flip) testCard.flip();
-
-          // 遍历手牌所有可能插入的缝隙
-          for (let i = 0; i <= hand.length; i++) {
-            const tempHand = [...hand];
-            tempHand.splice(i, 0, testCard);
-            const cohesion = evaluateHandCohesion(tempHand);
-            const gain = cohesion - baseCohesion;
-
-            if (gain > bestScoutGain) {
-              bestScoutGain = gain;
-              bestScoutMove = { side, flip, insertIndex: i, resultingHand: tempHand };
-            }
-          }
-        }
-      }
-    }
-
-    // 策略权衡：
-    // 如果手里有较强且张数 >= 2 的成型牌可以压过桌面：
-    // 排序找出打出后留下牌型最健康的组合
-    if (playableCombos.length > 0) {
-      // 如果没有可挖的牌（桌面为空），直接出最长或最强的牌
-      if (!currentShow || currentShow.cards.length === 0) {
-        playableCombos.sort((a, b) => b.cards.length - a.cards.length || b.combo.value - a.combo.value);
-        const best = playableCombos[0];
-        const indices = [];
-        for (let i = best.startIndex; i <= best.endIndex; i++) indices.push(i);
-        return game.playShow(botPlayer.id, indices);
-      }
-
-      // 如果有可挖牌，但是挖角能带来很大的收益（比如把手牌粘合成更长顺子/大对子），优先挖角
-      if (bestScoutMove && bestScoutGain >= 6 && playableCombos.every(c => c.cards.length <= 2)) {
-        return game.playScout(botPlayer.id, bestScoutMove.side, bestScoutMove.flip, bestScoutMove.insertIndex);
-      }
-
-      // 否则优先演出压制
-      // 筛选能够压制的最佳牌：优先出张数多的
-      playableCombos.sort((a, b) => {
-        if (b.cards.length !== a.cards.length) return b.cards.length - a.cards.length;
-        return a.combo.value - b.combo.value; // 同样张数尽量出较小的能压过的牌，保留更大底牌
-      });
-
-      const chosen = playableCombos[0];
-      const indices = [];
-      for (let i = chosen.startIndex; i <= chosen.endIndex; i++) indices.push(i);
-      return game.playShow(botPlayer.id, indices);
-    }
-
-    // 如果打不出任何牌，必须进行 Scout
-    if (bestScoutMove) {
-      // 检查是否有机会用 Scout & Show
-      if (botPlayer.hasScoutAndShow) {
-        // 模拟插入后，看是否能产生长度 >= 3 的强力组合
-        const newCombos = findAllPlayableCombos(bestScoutMove.resultingHand, null);
-        const bigCombo = newCombos.find(c => c.cards.length >= 3);
-        if (bigCombo) {
-          const showIndices = [];
-          for (let i = bigCombo.startIndex; i <= bigCombo.endIndex; i++) showIndices.push(i);
-          return game.playScoutAndShow(
-            botPlayer.id,
-            { side: bestScoutMove.side, flip: bestScoutMove.flip, insertIndex: bestScoutMove.insertIndex },
-            showIndices
-          );
-        }
-      }
-
-      return game.playScout(botPlayer.id, bestScoutMove.side, bestScoutMove.flip, bestScoutMove.insertIndex);
-    }
-
-    // 极端保护：兜底跳过
-    game.nextTurn();
-  }
+  return out;
 }
-
-module.exports = ScoutAI;
+function choose(state,difficulty='normal',random=Math.random){
+  const moves=candidates(state);if(!moves.length)return null;
+  const winners=moves.filter(m=>!m.remaining.length);if(winners.length)return winners[0];
+  if(difficulty==='easy'){
+    const shows=moves.filter(m=>m.event==='action_show');const pool=shows.length?shows:moves.filter(m=>m.event==='action_scout');
+    return pool[Math.floor(random()*pool.length)];
+  }
+  const minOther=Math.min(...state.players.filter(p=>p.id!==state.myPlayerId).map(p=>p.handCount));
+  for(const m of moves){
+    m.value=m.removed*5+m.points*2+R.cohesion(m.remaining)*.65-(m.event==='action_scout_and_show'?3:0);
+    if(m.event==='action_scout'&&state.currentShow&&state.players.length>2){
+      // A surviving show may end the round after this Scout; account for public score and hand penalty.
+      const owner=state.currentShow.playerId,actor=state.players.findIndex(p=>p.id===state.myPlayerId),next=state.players[(actor+1)%state.players.length];
+      if(next.id===owner&&state.currentShow.cards.length>1)m.value-=18;
+    }
+    if(difficulty==='hard'){
+      const groups=R.findAllPlayableCombos(m.remaining,null),longest=Math.max(0,...groups.map(c=>c.cards.length));
+      m.value+=longest*2-m.remaining.length*.8;
+      if(minOther<=2&&m.event==='action_scout')m.value-=8;
+      if(state.players.length===2&&m.event==='action_scout')m.value-=4;
+    }
+  }
+  return moves.sort((a,b)=>b.value-a.value)[0];
+}
+function prepare(hand){return R.cohesion(R.rotateHand(hand))>R.cohesion(hand);}
+module.exports={candidates,choose,prepare};

@@ -1,257 +1,51 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>马戏星探 (SCOUT) - 网页联机版</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="/socket.io/socket.io.js"></script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#351b29"><meta name="description" content="马戏星探 · 同一网络下，与好友共赴一场精彩演出。">
+  <title>马戏星探 · SCOUT</title><link rel="icon" href="tent.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+  <script defer src="/socket.io/socket.io.js"></script><script defer src="rules.js"></script><script defer src="sound.js"></script><script defer src="app.js"></script>
 </head>
 <body>
-
-  <!-- 顶部导航栏 -->
-  <header>
-    <div class="logo">
-      <span>🎪</span> SCOUT <span>马戏星探</span>
-    </div>
-    <div class="header-meta">
-      <div id="header-room-info" style="display: none;">
-        <span class="room-badge" id="display-room-code">房间号: ----</span>
-        <span id="display-round-info" style="font-weight: 700; color: var(--accent-teal);">第 1 轮</span>
-      </div>
-      <button class="btn-icon" id="btn-toggle-sound" title="开关音效">🔊 音效</button>
-      <button class="btn-icon" id="btn-open-rules">📖 规则</button>
-    </div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="马戏星探首页"><img src="tent.svg" alt="" width="36" height="36"><span>SCOUT<small>马戏星探</small></span></a>
+    <div class="top-actions"><span id="app-version" class="version-tag">v2.0.1</span><span id="connection" class="connection">连接中</span><button id="rules-open" class="quiet">玩法</button><button id="settings-open" class="quiet" aria-label="声音与动效设置">设置</button></div>
   </header>
-
-  <!-- ================= 视图 1：大厅与组队界面 ================= -->
-  <div id="lobby-view">
-    <div class="lobby-card">
-      <h1>🎪 SCOUT 马戏星探</h1>
-      <p class="subtitle">Oink Games 经典口碑爬梯卡牌桌游 · 多人在线对战</p>
-
-      <!-- 未进入房间：创建/加入 -->
-      <div id="lobby-join-section">
-        <div class="form-group">
-          <label for="input-nickname">你的昵称</label>
-          <input type="text" id="input-nickname" class="form-control" placeholder="输入玩家昵称" maxlength="10">
-        </div>
-        <div class="form-group">
-          <label for="input-room-code">房间号（加入已有房间时填写）</label>
-          <input type="text" id="input-room-code" class="form-control" placeholder="例如：A8B2" maxlength="4" style="text-transform: uppercase;">
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-primary" id="btn-create-room">✨ 创建新房间</button>
-          <button class="btn btn-secondary" id="btn-join-room">🚀 加入房间</button>
-        </div>
+  <main id="app">
+    <section id="home" class="home">
+      <div class="intro"><span class="eyebrow">THE SHOW IS ABOUT TO BEGIN</span><h1>好戏，<br>从这一手开始。</h1><p>手牌不能重排，精彩却可以重组。<br>招募新演员，用相邻的数字演出你的拿手好戏。</p>
+        <div class="hero-art" aria-hidden="true"><img src="tent.svg" class="hero-tent" alt=""><div class="hero-stars">✦ <span>✧</span> ✦</div><div class="hero-card hc1"><b>3</b><i>✦</i><small>7</small></div><div class="hero-card hc2"><b>4</b><i>✦</i><small>9</small></div><div class="hero-card hc3"><b>5</b><i>✦</i><small>2</small></div><span class="art-caption">A LITTLE SCOUT. A GREAT SHOW.</span></div>
+        <div class="intro-meta"><span>2–5 人</span><span>双向数字牌</span><span>同一网络联机</span></div>
       </div>
-
-      <!-- 已进入房间：席位等待 -->
-      <div id="lobby-room-section" class="room-lobby-section">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3 style="color: var(--accent-yellow);">房间就绪席位</h3>
-          <button class="btn-icon" id="btn-copy-link" style="font-size: 0.75rem;">📋 复制房间链接</button>
-        </div>
-        <p style="font-size: 0.8rem; color: var(--text-muted);">支持 2 - 5 名玩家对战。凑不齐人数时，房主可添加智能电脑玩家！</p>
-
-        <div class="player-list" id="lobby-player-list">
-          <!-- 动态渲染玩家列表 -->
-        </div>
-
-        <div class="btn-group" id="host-lobby-controls" style="display: none;">
-          <button class="btn btn-outline" id="btn-add-bot">🤖 添加电脑玩家</button>
-          <button class="btn btn-primary" id="btn-start-game">🎬 开始游戏</button>
-        </div>
-        <div id="guest-waiting-hint" style="display: none; text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-top: 14px;">
-          ⏳ 正在等待房主开始游戏...
-        </div>
+      <div class="entry paper"><span class="eyebrow">YOUR TICKET TO THE CIRCUS</span><h2>今晚，你来当团长。</h2><p class="muted">先起个名字，然后选择入场方式。</p>
+        <label for="nickname">你的昵称</label><input id="nickname" maxlength="16" placeholder="例如：小小魔术师" autocomplete="nickname">
+        <label for="difficulty">电脑难度</label><select id="difficulty"><option value="easy">入门 · 轻松熟悉玩法</option><option value="normal" selected>标准 · 认真来一场</option><option value="hard">挑战 · 更看重手牌结构</option></select>
+        <button class="primary full" id="practice">与电脑练习 <span>→</span></button>
+        <div class="divider"><span>或邀请好友同台</span></div>
+        <div class="entry-row"><button id="create-room" class="secondary">创建房间</button><button id="join-toggle" class="secondary">加入房间</button></div>
+        <div id="join-form" hidden><label for="room-code">四位房间号</label><div class="entry-row"><input id="room-code" maxlength="4" placeholder="ABCD" autocomplete="off"><button id="join-room" class="primary">入场</button></div></div>
+        <button id="tutorial-start" class="text-button">第一次玩？跟着做一小段教学 ↗</button>
+        <p class="entry-note">主机保持运行，好友连接同一 Wi-Fi 即可加入。</p>
       </div>
-    </div>
-  </div>
-
-  <!-- ================= 视图 2：游戏主战场 ================= -->
-  <div id="game-view">
-    <!-- 环绕其他玩家状态条 -->
-    <div class="other-players-bar" id="other-players-container">
-      <!-- 动态渲染其他玩家 -->
-    </div>
-
-    <!-- 舞台中央区 -->
-    <div class="stage-area">
-      <div class="circus-ring">
-        <div class="stage-title">
-          <span>🌟</span> 当前舞台表演 (Current Show)
-        </div>
-
-        <div class="stage-combo-desc" id="stage-combo-text">
-          舞台空置，等待起秀
-        </div>
-
-        <div class="stage-cards-container" id="stage-cards-box">
-          <!-- 舞台卡牌动态渲染 -->
-        </div>
-
-        <!-- 舞台左右快速挖角按钮 -->
-        <div id="stage-scout-triggers" style="display: none; gap: 20px; margin-top: 6px;">
-          <button class="scout-wing-btn" id="btn-scout-left">◀ 从左端挖角</button>
-          <button class="scout-wing-btn" id="btn-scout-right">从右端挖角 ▶</button>
-        </div>
-      </div>
-
-      <!-- 状态与动态日志提示栏 -->
-      <div class="status-banner" id="game-status-banner">
-        等待本轮发牌...
-      </div>
-    </div>
-
-    <!-- 底部操作与工具栏 -->
-    <div class="action-dock" id="action-dock">
-      <!-- 准备阶段控制组 -->
-      <div id="prepare-controls" style="display: none; gap: 12px;">
-        <button class="action-dock-btn btn-secondary" id="btn-flip-hand">🔄 翻转整副手牌 (180°)</button>
-        <button class="action-dock-btn btn-show" id="btn-ready-hand">✅ 准备就绪</button>
-      </div>
-
-      <!-- 游戏主出牌控制组 -->
-      <div id="playing-controls" style="display: none; gap: 12px; align-items: center;">
-        <button class="action-dock-btn btn-show" id="btn-action-show" disabled>
-          🎭 演出 (Show)
-        </button>
-        <button class="action-dock-btn btn-scout-show" id="btn-action-scout-show">
-          ⚡ 挖角并演出 (Scout & Show)
-        </button>
-        <button class="action-dock-btn btn-outline" id="btn-clear-selection" style="display: none;">
-          ✖ 取消选择
-        </button>
-      </div>
-
-      <!-- 挖角插槽放置控制组 -->
-      <div id="scout-placement-controls" style="display: none; align-items: center; gap: 12px;">
-        <div class="scout-placement-toolbar">
-          <span style="font-size: 0.85rem; color: var(--accent-teal);" id="scout-card-preview-text">正在挖角: [?]</span>
-          <button class="btn-icon" id="btn-flip-scout-card">🔄 翻转卡面朝向</button>
-        </div>
-        <button class="action-dock-btn btn-outline" id="btn-cancel-scout">✖ 取消挖角</button>
-      </div>
-    </div>
-
-    <!-- 玩家自己的手牌托盘 (Hand Tray) -->
-    <div class="hand-tray-container">
-      <div class="hand-meta-bar">
-        <div>
-          <span style="font-weight: 700; color: #fff;">我的手牌</span>
-          <span style="color: var(--accent-yellow); margin-left: 8px;">(严格禁止任意理牌)</span>
-        </div>
-        <div id="my-stats-summary" style="display: flex; gap: 14px;">
-          <span>得分牌: <strong id="my-score-pile-count">0</strong></span>
-          <span>挖角筹码: <strong id="my-scout-chips-count">0</strong></span>
-          <span>大招: <strong id="my-scout-show-status" style="color: var(--accent-teal);">可用</strong></span>
-        </div>
-      </div>
-
-      <!-- 动态手牌与插入插槽 -->
-      <div class="hand-cards-list" id="my-hand-container">
-        <!-- 卡牌与插槽动态注入 -->
-      </div>
-    </div>
-  </div>
-
-  <!-- ================= 模态弹窗 1：单轮结算 (Round Over) ================= -->
-  <div class="modal-overlay" id="round-modal">
-    <div class="modal-content">
-      <div class="modal-title" id="round-result-title">🎉 本轮结束！</div>
-      <p id="round-result-desc" style="text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;"></p>
-
-      <table class="score-table">
-        <thead>
-          <tr>
-            <th>玩家</th>
-            <th>得分牌</th>
-            <th>挖角筹码</th>
-            <th>剩余手牌扣分</th>
-            <th>本轮净分</th>
-            <th>累计总分</th>
-          </tr>
-        </thead>
-        <tbody id="round-score-tbody">
-          <!-- 动态得分行 -->
-        </tbody>
-      </table>
-
-      <div style="display: flex; justify-content: center; gap: 12px; margin-top: 18px;">
-        <button class="btn btn-primary" id="btn-next-round" style="display: none;">下一轮 ➡</button>
-        <span id="guest-next-round-wait" style="color: var(--text-muted); font-size: 0.85rem; display: none;">等待房主开启下一轮...</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================= 模态弹窗 2：终局结算 (Game Over) ================= -->
-  <div class="modal-overlay" id="gameover-modal">
-    <div class="modal-content" style="text-align: center;">
-      <div class="modal-title" style="font-size: 1.8rem;">🏆 巡回演出圆满收官！</div>
-      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">最终排名与大明星探总得分榜</p>
-
-      <table class="score-table">
-        <thead>
-          <tr>
-            <th>名次</th>
-            <th>玩家</th>
-            <th>最终总得分</th>
-          </tr>
-        </thead>
-        <tbody id="gameover-score-tbody">
-          <!-- 终局排名 -->
-        </tbody>
-      </table>
-
-      <div style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
-        <button class="btn btn-primary" id="btn-restart-game" style="display: none;">🔄 再来一局！</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================= 模态弹窗 3：游戏规则说明 ================= -->
-  <div class="modal-overlay" id="rules-modal">
-    <div class="modal-content">
-      <div class="modal-title">📖 《马戏星探》(SCOUT) 核心规则速查</div>
-      <div class="rules-body">
-        <h4>1. 绝对不能理牌（核心规则）</h4>
-        <p>摸牌后严禁改变手牌顺序。但在正式开局前，你可以选择将整副手牌**180度上下颠倒一次**。</p>
-
-        <h4>2. 出牌规则（相邻与牌型）</h4>
-        <ul>
-          <li>打出的组合必须在手中是**物理上相邻**的。</li>
-          <li><strong>同号组合 (Set)</strong>：数字完全相同（如 7-7-7）。</li>
-          <li><strong>顺子组合 (Run)</strong>：递增或递减连续数字（如 3-4-5 或 5-4-3）。</li>
-        </ul>
-
-        <h4>3. 牌型大小压制</h4>
-        <ul>
-          <li><strong>张数多一定压过张数少</strong>（3张顺子稳压2张对子）。</li>
-          <li><strong>张数相同时</strong>：同号组合 &gt; 顺子组合。</li>
-          <li><strong>张数与牌型都相同时</strong>：比较组合中的最大点数（严格大于）。</li>
-        </ul>
-
-        <h4>4. 回合三大行动</h4>
-        <ul>
-          <li><strong>演出 (Show)</strong>：打出更强相邻组合压制桌面，把台上原有的牌收为自己的得分牌（1张=1分）。</li>
-          <li><strong>挖角 (Scout)</strong>：打不过时，从舞台最左或最右拿走一张牌，自由翻面并插入手牌任意缝隙。原舞台表演者获得1枚挖角筹码（1分）。</li>
-          <li><strong>挖角并演出 (Scout & Show)</strong>：每轮仅有1次机会的绝技，先挖角插入手牌，然后立刻演出！</li>
-        </ul>
-
-        <h4>5. 轮次结束与得分</h4>
-        <ul>
-          <li>当有玩家<strong>手牌打空</strong>，或某玩家的表演<strong>绕场一周没人能压过</strong>时，本轮立刻结束。</li>
-          <li><strong>得分计算</strong> = 得分牌数 + 挖角筹码数 - <strong>剩余手牌张数</strong>（成功绕场一周者免扣手牌分）。</li>
-        </ul>
-      </div>
-      <div style="text-align: center; margin-top: 18px;">
-        <button class="btn btn-outline" id="btn-close-rules">关闭</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="sound.js"></script>
-  <script src="app.js"></script>
-</body>
-</html>
+    </section>
+    <section id="lobby" class="lobby" hidden></section>
+    <section id="game" class="game" hidden>
+      <div id="table-top"></div><div id="seats" class="seats"></div><aside id="mode-rules" class="mode-rules" aria-label="本局行动规则"></aside>
+      <section class="stage" aria-label="中央舞台"><div class="stage-decoration" aria-hidden="true">✦</div><div id="turn-banner" class="turn-banner" role="status"></div><h2 id="stage-title">聚光灯已就位</h2><div id="stage-cards" class="stage-cards"></div><div id="stage-actions" class="stage-actions"></div></section>
+      <section class="hand-panel"><div id="hand-heading" class="hand-heading"></div><div id="flow" class="flow" role="status"></div><div id="hand" class="hand-scroll" aria-label="你的手牌，顺序不可改变"></div><div id="controls" class="controls"></div><div id="selection-feedback" class="selection-feedback" role="status"></div></section>
+      <details class="activity"><summary>最近发生了什么</summary><ol id="activity-list"></ol></details>
+    </section>
+  </main>
+  <footer id="footer">SCOUT · 马戏星探 <span>局域网版 / v2.0.1</span></footer>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="rules-dialog" class="dialog"><div class="dialog-top"><span class="eyebrow">HOW TO PLAY</span><button class="quiet close-dialog" aria-label="关闭规则">关闭 ×</button></div><div class="help-mode-tabs" aria-label="选择规则人数"><button id="help-mode-duel" class="secondary" aria-pressed="false">双人规则</button><button id="help-mode-classic" class="secondary" aria-pressed="true">3–5 人规则</button></div><h2 id="rules-title">三种行动，一场好戏。</h2>
+    <div class="rule-grid"><article><span class="rule-number">01</span><h3>演出 SHOW</h3><p>选择手中相邻的同号或连续顺子，压过舞台。台上旧牌归你，每张 1 分。</p></article><article><span class="rule-number">02</span><h3>挖角 SCOUT</h3><p id="rule-scout-desc">取舞台任一端的一张牌，可翻转后插入手牌任意位置。多人局中，原表演者得 1 筹码。</p></article><article id="rule-scout-show"><span class="rule-number">03</span><h3>挖角并演出</h3><p>先挖角，再立即演出压过剩余舞台。三至五人局每轮一次，双人局不可使用。</p></article></div>
+    <h3>记住这四件事</h3><ul class="rule-list"><li><strong>不能理牌。</strong>仅在准备时旋转整手牌；已确认的手牌不能重排、单独翻转。</li><li><strong>张数优先。</strong>同张数时同号胜顺子，同类型比较点数；递增和递减顺子都可以。</li><li id="round-end-rule"><strong>结束与计分。</strong>有人出完，或所有对手都只挖角而舞台仍有牌，本轮结束。得分牌＋筹码－手牌；舞台无人压过的表演者免扣手牌。</li><li><strong>轮流开场。</strong>一共进行与人数相同的轮数，起始玩家逐轮轮换；总分最高获胜，并列则共享胜利。</li></ul>
+    <div class="rule-duel"><h3>双人局：只选演出或挖角</h3><p>移除 9/10 牌，每人 11 张；余下 22 张留到第二轮。每人每轮只有 3 枚挖角筹码，每挖 1 张花费 1 枚，整轮最多挖角 3 次。挖角后仍由自己行动，不给对手筹码，也不能使用“挖角并演出”。筹码用完后只能演出；无法演出则立即结算。未用的筹码每枚记 1 分，第二轮重新补为 3 枚并更换起始玩家。</p></div>
+    <p class="muted small">规则依据 Oink Games SCOUT 英文规则书 v1.1；本作是独立制作的本地游戏界面。<a href="https://oinkgames.com/en/games/analog/scout/" target="_blank" rel="noopener">出版方介绍 ↗</a></p>
+  </dialog>
+  <dialog id="settings-dialog" class="dialog compact"><div class="dialog-top"><span class="eyebrow">MAKE YOURSELF COMFORTABLE</span><button class="quiet close-dialog">关闭 ×</button></div><h2>让好戏合你心意。</h2><label class="setting-line"><span>演出音效</span><input type="checkbox" id="sound-enabled" checked></label><label for="volume">音量</label><input id="volume" type="range" min="0" max="100" value="35"><label class="setting-line"><span>减少动效</span><input id="reduced-motion" type="checkbox"></label><p class="muted">设置只保存在这台设备。</p></dialog>
+  <dialog id="result-dialog" class="dialog"><div class="dialog-top"><span class="eyebrow">CURTAIN CALL</span><button class="quiet close-dialog">先看牌桌 ×</button></div><div id="result-content"></div></dialog>
+  <dialog id="share-dialog" class="dialog compact"><div class="dialog-top"><span class="eyebrow">BRING YOUR FRIENDS</span><button class="quiet close-dialog">关闭 ×</button></div><h2>邀请好友同台。</h2><p id="share-intro">好友连接同一 Wi-Fi，在浏览器输入下面的局域网链接。</p><div id="share-content"></div><p id="share-network-hint" class="muted small">通常选择 Wi-Fi 或以太网地址；虚拟网卡通常不适用。若无法访问，请查看随包说明中的连接排查。</p></dialog>
+  <dialog id="leave-dialog" class="dialog compact"><span class="eyebrow">TAKE A BOW</span><h2>离开这场演出？</h2><p>对局进行中离开，座位将由电脑接手。主动离开后无法恢复该座位。</p><div class="entry-row"><button class="secondary close-dialog">留在牌桌</button><button id="leave-confirm" class="primary">离开房间</button></div></dialog>
+</body></html>
