@@ -14,6 +14,11 @@ if(location.protocol==='file:' || typeof window.io!=='function'){
   return;
 }
 const $=id=>document.getElementById(id),R=window.ScoutRules;
+if(location.protocol==='https:'&&!['localhost','127.0.0.1','::1','[::1]'].includes(location.hostname)){
+  document.querySelector('.intro-meta span:last-child').textContent='好友在线联机';
+  document.querySelector('.entry-note').textContent='分享房间链接，手机或电脑浏览器即可加入。';
+  $('footer').querySelector('span').textContent='在线版 / v2.0.1';
+}
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const button=(text,cls,action,disabled=false)=>{const b=el('button',cls,text);b.disabled=disabled;b.addEventListener('click',action);return b;};
 const levelName={easy:'入门',normal:'标准',hard:'挑战'};
