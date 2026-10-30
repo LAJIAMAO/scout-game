@@ -1,0 +1,2 @@
+# Keep Windows launch scripts in CRLF in checkouts and release archives.
+*.bat -text
