@@ -13,16 +13,28 @@ if(location.protocol==='file:' || typeof window.io!=='function'){
   document.querySelectorAll('button').forEach(button=>button.disabled=true);
   return;
 }
-const $=id=>document.getElementById(id),R=window.ScoutRules;
+const $=id=>document.getElementById(id),R=window.ScoutRules,P=window.ScoutPresentation;
 if(location.protocol==='https:'&&!['localhost','127.0.0.1','::1','[::1]'].includes(location.hostname)){
   document.querySelector('.intro-meta span:last-child').textContent='好友在线联机';
   document.querySelector('.entry-note').textContent='分享房间链接，手机或电脑浏览器即可加入。';
-  $('footer').querySelector('span').textContent='在线版 / v2.0.1';
+  $('footer').querySelector('span').textContent='在线版 / v2.0.2';
 }
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const button=(text,cls,action,disabled=false)=>{const b=el('button',cls,text);b.disabled=disabled;b.addEventListener('click',action);return b;};
 const levelName={easy:'入门',normal:'标准',hard:'挑战'};
 let state=null,pending=false,draft=null,selected=new Set(),resultKey='',toastTimer,tutorial=null,network=null,hintSetting=null;
+let serverOffset=0,presentationTimers=[],lastTurnNotice='',lastActionSound='';
+const animatedFlights=new Set();
+function serverNow(){return Date.now()+serverOffset;}
+function actionPhase(){return !tutorial&&state?.lastAction?P.phaseAt(state.lastAction,serverNow()):'done';}
+function presentationLocked(){return !tutorial&&state&&(state.presentationUntil||0)>serverNow();}
+function schedulePresentation(){
+  presentationTimers.forEach(clearTimeout);presentationTimers=[];
+  const a=!tutorial&&state?.lastAction;if(!a)return;
+  const times=P.milestones(a);if(a.roundEnded)times.push(a.until+1000,a.until+2000);
+  for(const at of times)if(at>serverNow())presentationTimers.push(setTimeout(()=>{if(state?.lastAction?.id===a.id)render();},Math.max(1,at-serverNow()+25)));
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state){schedulePresentation();render();}});
 let session=null;
 try{session=JSON.parse(sessionStorage.getItem('scout-session')||'null');$('nickname').value=localStorage.getItem('scout-name')||'';}catch{}
 let preferences={sound:true,volume:35,reduced:matchMedia('(prefers-reduced-motion: reduce)').matches};
@@ -57,7 +69,10 @@ socket.on('game_state_update',next=>{
   const previous=state;
   if(!state||next.version!==state.version){draft=null;selected.clear();}
   state=next;
-  if(next.phase==='PLAYING'&&next.activePlayerId===next.myPlayerId&&(previous?.activePlayerId!==next.activePlayerId||previous?.phase!=='PLAYING'))Sound.play('turn');
+  if(Number.isFinite(next.serverTime))serverOffset=next.serverTime-Date.now();
+  const a=next.lastAction;
+  if(a&&a.id!==lastActionSound&&serverNow()<a.until){lastActionSound=a.id;if(a.actorId!==next.myPlayerId)Sound.play(a.kind==='scout'?'scout':a.kind==='scout_show'?'combo':'show');}
+  schedulePresentation();
   render();
 });
 function request(event,data={}){
@@ -74,7 +89,7 @@ function syncRulesHelp(duel=!!isDuel()){
   $('rule-scout-desc').textContent=duel?'每次只取舞台一端的 1 张，花费 1 枚自己的筹码。每轮共 3 次；挖角后仍由自己行动。不给对手筹码。':'取舞台任一端的 1 张，可翻转后插入手牌任意位置。原表演者得 1 筹码，你的回合结束。';
   $('round-end-rule').textContent=duel?'结束与计分：有人出完，或一方无法演出且挖角次数为 0 时，本轮结束。得分牌＋未用筹码－手牌；使对手无法行动的表演者免扣手牌。':'结束与计分：有人出完，或所有对手都只挖角而舞台仍有牌，本轮结束。得分牌＋筹码－手牌；舞台无人压过的表演者免扣手牌。';
 }
-function myTurn(){return state?.phase==='PLAYING'&&state.activePlayerId===state.myPlayerId&&(tutorial||socket.connected)&&!pending;}
+function myTurn(){return state?.phase==='PLAYING'&&state.activePlayerId===state.myPlayerId&&(tutorial||socket.connected)&&!pending&&!presentationLocked();}
 function host(){return state?.hostId===state?.myPlayerId;}
 async function command(event,data={}){
   if(pending)return;
@@ -113,6 +128,7 @@ function render(){
   if(!state){$('result-dialog').close();return;}
   if(state.phase==='LOBBY'){renderLobby();$('result-dialog').close();return;}
   renderTableTop();renderSeats();renderModeRules();renderStage();renderHand();renderControls();renderLogs();renderResult();
+  if(myTurn()){const key=`${state.roomId}:${state.round}:${state.lastAction?.id||'start'}`;if(key!==lastTurnNotice){lastTurnNotice=key;Sound.play('turn');}}
 }
 function renderLobby(){
   const box=$('lobby');box.replaceChildren();
@@ -141,7 +157,7 @@ function renderTableTop(){
   else left.append(el('strong',null,`第 ${state.round} / ${state.maxRounds} 轮`),el('span','table-label',`　${state.players.length===2?'双人专用规则':'经典模式'} · 房间 ${state.roomId}`));
   const right=el('div','table-top-actions');
   if(!tutorial)right.append(button(`房间 ${state.roomId}`,'quiet',openShare));
-  if(['ROUND_OVER','GAME_OVER'].includes(state.phase))right.append(button('查看结算','quiet',()=>showDialog('result-dialog')));
+  if(['ROUND_OVER','GAME_OVER'].includes(state.phase))right.append(button(presentationLocked()?'谢幕中…':'查看结算','quiet',()=>showDialog('result-dialog'),presentationLocked()));
   right.append(button(tutorial?'跳过教学':'离开','quiet',()=>tutorial?exitTutorial():showDialog('leave-dialog')));box.append(left,right);
 }
 function renderModeRules(){
@@ -150,24 +166,83 @@ function renderModeRules(){
 }
 function renderSeats(){
   $('seats').replaceChildren();state.players.filter(p=>p.id!==state.myPlayerId).forEach(p=>{
-    const seat=el('article',`player-seat${p.id===state.activePlayerId&&state.phase==='PLAYING'?' active':''}`);
+    const a=state.lastAction,phase=actionPhase(),showing=presentationLocked(),actor=showing&&a?.actorId===p.id;
+    const seat=el('article',`player-seat${actor||!showing&&p.id===state.activePlayerId&&state.phase==='PLAYING'?' active':''}${actor?' presenting-actor':''}`);seat.id=`seat-${p.id}`;
     const status=p.isBot?`${levelName[p.difficulty]}电脑`:p.controlled?'电脑暂时代管':!p.connected?'离线 · 保留座位':'在线';
-    seat.append(el('div','name',p.name),el('div','status',state.phase==='PREPARE'?p.isReady?'已准备':`${status} · 选方向中`:state.phase==='PLAYING'&&p.id===state.activePlayerId?`${status} · 行动中`:status));
-    const stats=el('div','stats');for(const [label,value]of (isDuel()?[['手牌',p.handCount],['牌分',p.scorePileCount],['余次',scoutsLeft(p)],['总分',p.totalScore]]:[['手牌',p.handCount],['本轮',p.scorePileCount+p.scoutChips],['总分',p.totalScore]])){const s=el('span',null,label);s.append(el('b',null,value));stats.append(s);}seat.append(stats);$('seats').append(seat);
+    const acting=actor?(phase==='scout'?'正在挖角 1 张':phase==='show'?'正在演出':phase==='curtain'?'最后一手 · 谢幕中':'行动展示中'):!showing&&state.phase==='PLAYING'&&p.id===state.activePlayerId?'行动中':status;
+    seat.append(el('div','name',p.name),el('div','status',state.phase==='PREPARE'?p.isReady?'已准备':`${status} · 选方向中`:acting));
+    let visibleCount=p.handCount;
+    if(actor){if(phase==='scout'||phase==='show'&&a.kind==='show')visibleCount=a.handCountBefore;else if(phase==='show'&&a.kind==='scout_show')visibleCount=a.handCountBefore+1;}
+    const stats=el('div','stats');for(const [label,value]of (isDuel()?[['手牌',visibleCount],['牌分',p.scorePileCount],['余次',scoutsLeft(p)],['总分',p.totalScore]]:[['手牌',visibleCount],['本轮',p.scorePileCount+p.scoutChips],['总分',p.totalScore]])){const s=el('span',null,label);s.append(el('b',null,value));stats.append(s);}seat.append(stats);$('seats').append(seat);
   });
 }
 function preview(){return draft&&draft.side&&draft.index!==null?R.previewScout(state.myHand,state.currentShow?.cards,{side:draft.side,flip:draft.flip,insertIndex:draft.index}):null;}
 function renderStage(){
-  const current=state.currentShow,me=myPlayer();$('turn-banner').classList.toggle('my-turn',myTurn());
+  const phase=actionPhase(),a=state.lastAction,showing=presentationLocked();
+  const current=showing&&a?P.stageAt(a,serverNow()):state.currentShow,me=myPlayer();$('turn-banner').classList.toggle('my-turn',myTurn());
   $('turn-banner').textContent=state.phase==='PREPARE'?me.isReady?'你已准备，等待其他演员':'开场前 · 选择整手牌的方向':state.phase==='PLAYING'?myTurn()?isDuel()?`轮到你 · 本轮剩余 ${scoutsLeft()} 次挖角${scoutsLeft()===0?'，请演出':''}`:'聚光灯照向你 · 轮到你行动':`等待 ${state.players.find(p=>p.id===state.activePlayerId)?.name||'玩家'} 行动`:'本轮演出结束';
   if(!socket.connected&&!tutorial)$('turn-banner').textContent='连接中断，正在找回你的座位…';
+  else if(showing&&a)$('turn-banner').textContent=phase==='curtain'?'最后一手已完成 · 先看清舞台，再结算':`全场观看 · ${a.actorName} 的行动`;
   const remaining=draft?.side?R.previewScout(state.myHand,current?.cards,{side:draft.side,flip:draft.flip,insertIndex:draft.index??0}):null;
   $('stage-title').textContent=remaining?.success?`挖角后预览 · ${remaining.combo?.label||'空舞台'}`:current?`${current.playerName} · ${current.combo.label}`:'聚光灯已就位';
   const box=$('stage-cards');box.replaceChildren();
-  if(current)current.cards.forEach(c=>{const n=card(c);if(draft?.side&&(draft.side==='left'?current.cards[0]:current.cards.at(-1)).id===c.id)n.classList.add('scouted');box.append(n);});
+  if(current)current.cards.forEach(c=>{const n=card(c);if(draft?.side&&(draft.side==='left'?current.cards[0]:current.cards.at(-1)).id===c.id)n.classList.add('scouted');if(showing&&phase==='scout'&&c.id===a.scoutedCard?.id)n.classList.add('scout-highlight');box.append(n);});
   else{const empty=el('div','stage-empty');empty.append(el('b',null,'✧'),el('span',null,'舞台空着 · 用任意合法组合开场'));box.append(empty);}
   const actions=$('stage-actions');actions.replaceChildren();
   if(draft?.step==='edge'&&current){actions.append(button(`← 左端 ${current.cards[0].top}`,'',()=>chooseEdge('left')),button(`右端 ${current.cards.at(-1).top} →`,'',()=>chooseEdge('right')));}
+  renderPublicAction(a,phase);
+}
+function renderPublicAction(a,phase){
+  const hud=$('action-hud'),summary=$('last-action-summary'),stage=hud.closest('.stage');
+  const showing=!!a&&phase!=='done';stage.classList.toggle('is-presenting',showing);stage.classList.toggle('is-curtain',phase==='curtain');
+  hud.hidden=!showing;summary.hidden=!a||showing;
+  if(!a)return;
+  const actionName={show:'演出',scout:'挖角',scout_show:'挖角并演出'}[a.kind];
+  const key=`${a.id}:${phase}`;
+  if(hud.dataset.key!==key){
+    hud.dataset.key=key;hud.replaceChildren();
+    let title,detail;
+    if(phase==='curtain'){
+      const outcome=a.outcome;
+      title=outcome?.reason==='EMPTY_HAND'?`${outcome.playerName} 已出完手牌`:outcome?.reason==='BLOCKED'?`${outcome.playerName} 的对手已无法行动`:`${outcome?.playerName||a.actorName} 的演出无人压过`;
+      detail='本轮结束 · 保留最后的舞台，随后显示得分明细';
+    }else if(phase==='scout'){
+      title=`${a.actorName} · ${a.kind==='scout_show'?'① 挖角':'挖角'} 1 张`;
+      detail=`从${a.sourceSide==='left'?'左':'右'}端取走 1 张${a.ownerChipAward?` · ${a.sourceOwnerName} 获得 1 枚筹码`:` · 本轮还可挖角 ${a.remainingScouts} 次`}`;
+    }else if(phase==='show'){
+      title=`${a.actorName} · ${a.kind==='scout_show'?'② 演出':'演出'}`;
+      detail=`${R.analyzeCombo(a.shownCards)?.label||'新的表演'}${a.capturedCount?` · 收下 ${a.capturedCount} 张得分牌`:''}`;
+    }else{
+      title=`${a.actorName} · ${actionName}完成`;
+      detail=a.kind==='scout'?a.remainingScouts!==null?`手牌 +1 · 本轮还可挖角 ${a.remainingScouts} 次，仍由本人行动`:`手牌 +1 · ${a.sourceOwnerName} 筹码 +1，下一位稍后行动`:a.kind==='scout_show'?`先挖 1 张，再打出 ${a.shownCards.length} 张 · 本轮特殊机会已使用`:`${R.analyzeCombo(a.shownCards)?.label||'演出成功'}${a.capturedCount?` · 得分牌 +${a.capturedCount}`:''}`;
+    }
+    hud.append(el('span','action-kicker',phase==='curtain'?'CURTAIN CALL / 谢幕':a.kind==='scout_show'?'SCOUT & SHOW / 分步展示':'TABLE ACTION / 全场可见'),el('strong','action-title',title),el('span','action-detail',detail));
+    if(phase==='curtain')hud.append(el('span','curtain-countdown'));
+  }
+  const countdown=hud.querySelector('.curtain-countdown');if(countdown)countdown.textContent=`${Math.max(1,Math.ceil((a.settlementAt-serverNow())/1000))} 秒后显示结算`;
+  summary.textContent=`刚刚：${a.actorName} ${actionName}${a.kind==='scout'?' 1 张':` · ${R.analyzeCombo(a.shownCards)?.label||''}`}${a.capturedCount?`，得分牌 +${a.capturedCount}`:''}`;
+  if(showing&&(phase==='scout'||phase==='show'))animatePublicCards(a,phase);
+}
+function animatePublicCards(a,phase){
+  const key=`${a.id}:${phase}`;if(animatedFlights.has(key))return;animatedFlights.add(key);if(animatedFlights.size>100){animatedFlights.clear();animatedFlights.add(key);}
+  if(preferences.reduced)return;
+  requestAnimationFrame(()=>{
+    if(state?.lastAction?.id!==a.id||actionPhase()!==phase)return;
+    const stage=$('stage-cards').getBoundingClientRect();
+    const actor=(a.actorId===state.myPlayerId?$('hand-heading'):document.getElementById(`seat-${a.actorId}`))?.getBoundingClientRect();if(!actor)return;
+    const origin=phase==='scout'?document.querySelector(`#stage-cards [data-card-id="${a.scoutedCard.id}"]`)?.getBoundingClientRect()||stage:actor;
+    const target=phase==='scout'?actor:stage;
+    const flight=el('div',`action-flight ${phase==='show'?'show-flight':''}`);flight.setAttribute('aria-hidden','true');
+    const cards=phase==='scout'?[a.scoutedCard]:a.shownCards.slice(0,6);cards.forEach(c=>flight.append(card(c)));
+    if(phase==='show'&&a.shownCards.length>6)flight.append(el('span','flight-extra',`+${a.shownCards.length-6}`));
+    document.body.append(flight);
+    const width=flight.getBoundingClientRect().width,height=flight.getBoundingClientRect().height;
+    const fromX=origin.x+origin.width/2-width/2,fromY=origin.y+origin.height/2-height/2,toX=target.x+target.width/2-width/2,toY=target.y+target.height/2-height/2;
+    const duration=Math.min(950,a.durationMs*(a.kind==='scout_show'?.29:.44));
+    const animation=flight.animate([{transform:`translate(${fromX}px,${fromY}px) scale(.65)`,opacity:0},{transform:`translate(${fromX}px,${fromY-15}px) scale(1)`,opacity:1,offset:.22},{transform:`translate(${toX}px,${toY}px) scale(${phase==='scout'?'.6':'.9'})`,opacity:0}],{duration,easing:'ease-in-out',fill:'forwards'});
+    if(phase==='scout')setTimeout(()=>flight.classList.add('card-back'),duration*.42);
+    animation.onfinish=()=>flight.remove();setTimeout(()=>flight.remove(),duration+300);
+  });
 }
 function renderHand(){
   const me=myPlayer();if(!me)return;const heading=$('hand-heading');heading.replaceChildren();const title=el('h3',null,'你的手牌');title.append(el('small',null,'顺序不可改变'));const stats=el('div','my-stats');
@@ -193,6 +268,9 @@ function renderControls(){
     box.append(button('↻ 旋转整手牌','secondary',()=>command('flip_hand'),me.isReady||pending||!socket.connected&&!tutorial),button(me.isReady?'已准备 · 等待其他人':'确认方向，准备演出','primary',()=>command('ready'),me.isReady||pending||!socket.connected&&!tutorial));feedback.textContent='旋转会同时反转牌序和上下数字；准备后本轮不可再调整。';return;
   }
   if(state.phase!=='PLAYING')return;
+  if(presentationLocked()){
+    box.append(button('正在观看行动…','primary',()=>{},true));feedback.textContent='所有玩家看完这一手后，再继续行动。';return;
+  }
   if(draft){
     if(draft.step==='place'){
       const c=state.currentShow.cards[draft.side==='left'?0:state.currentShow.cards.length-1];
@@ -231,6 +309,7 @@ async function getHint(){
 function renderLogs(){const box=$('activity-list');box.replaceChildren();state.logs.forEach(text=>box.append(el('li',null,text)));}
 function renderResult(){
   if(!['ROUND_OVER','GAME_OVER'].includes(state.phase)){resultKey='';$('result-dialog').close();return;}
+  if(presentationLocked()){$('result-dialog').close();return;}
   const result=state.lastRoundResult;if(!result)return;
   const box=$('result-content');box.replaceChildren();box.append(el('h2',null,state.phase==='GAME_OVER'?'掌声，献给每一位演员。':`第 ${state.round} 轮 · 谢幕`));
   box.append(el('p','result-caption',`${result.triggerPlayerName} ${result.triggerType==='EMPTY_HAND'?'率先出完手牌':result.triggerType==='BLOCKED'?'的对手无法继续行动':'的演出无人压过'}。`));

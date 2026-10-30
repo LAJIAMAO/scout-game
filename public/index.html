@@ -4,12 +4,12 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#351b29"><meta name="description" content="马戏星探 · 同一网络下，与好友共赴一场精彩演出。">
   <title>马戏星探 · SCOUT</title><link rel="icon" href="tent.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
-  <script defer src="/socket.io/socket.io.js"></script><script defer src="rules.js"></script><script defer src="sound.js"></script><script defer src="app.js"></script>
+  <script defer src="/socket.io/socket.io.js"></script><script defer src="rules.js"></script><script defer src="presentation.js"></script><script defer src="sound.js"></script><script defer src="app.js"></script>
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/" aria-label="马戏星探首页"><img src="tent.svg" alt="" width="36" height="36"><span>SCOUT<small>马戏星探</small></span></a>
-    <div class="top-actions"><span id="app-version" class="version-tag">v2.0.1</span><span id="connection" class="connection">连接中</span><button id="rules-open" class="quiet">玩法</button><button id="settings-open" class="quiet" aria-label="声音与动效设置">设置</button></div>
+    <div class="top-actions"><span id="app-version" class="version-tag">v2.0.2</span><span id="connection" class="connection">连接中</span><button id="rules-open" class="quiet">玩法</button><button id="settings-open" class="quiet" aria-label="声音与动效设置">设置</button></div>
   </header>
   <main id="app">
     <section id="home" class="home">
@@ -31,12 +31,12 @@
     <section id="lobby" class="lobby" hidden></section>
     <section id="game" class="game" hidden>
       <div id="table-top"></div><div id="seats" class="seats"></div><aside id="mode-rules" class="mode-rules" aria-label="本局行动规则"></aside>
-      <section class="stage" aria-label="中央舞台"><div class="stage-decoration" aria-hidden="true">✦</div><div id="turn-banner" class="turn-banner" role="status"></div><h2 id="stage-title">聚光灯已就位</h2><div id="stage-cards" class="stage-cards"></div><div id="stage-actions" class="stage-actions"></div></section>
+      <section class="stage" aria-label="中央舞台"><div class="stage-decoration" aria-hidden="true">✦</div><div id="turn-banner" class="turn-banner" role="status"></div><div id="action-hud" class="action-hud" role="status" aria-live="polite" hidden></div><h2 id="stage-title">聚光灯已就位</h2><div id="stage-cards" class="stage-cards"></div><div id="stage-actions" class="stage-actions"></div><div id="last-action-summary" class="last-action-summary" hidden></div></section>
       <section class="hand-panel"><div id="hand-heading" class="hand-heading"></div><div id="flow" class="flow" role="status"></div><div id="hand" class="hand-scroll" aria-label="你的手牌，顺序不可改变"></div><div id="controls" class="controls"></div><div id="selection-feedback" class="selection-feedback" role="status"></div></section>
       <details class="activity"><summary>最近发生了什么</summary><ol id="activity-list"></ol></details>
     </section>
   </main>
-  <footer id="footer">SCOUT · 马戏星探 <span>局域网版 / v2.0.1</span></footer>
+  <footer id="footer">SCOUT · 马戏星探 <span>局域网版 / v2.0.2</span></footer>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="rules-dialog" class="dialog"><div class="dialog-top"><span class="eyebrow">HOW TO PLAY</span><button class="quiet close-dialog" aria-label="关闭规则">关闭 ×</button></div><div class="help-mode-tabs" aria-label="选择规则人数"><button id="help-mode-duel" class="secondary" aria-pressed="false">双人规则</button><button id="help-mode-classic" class="secondary" aria-pressed="true">3–5 人规则</button></div><h2 id="rules-title">三种行动，一场好戏。</h2>
     <div class="rule-grid"><article><span class="rule-number">01</span><h3>演出 SHOW</h3><p>选择手中相邻的同号或连续顺子，压过舞台。台上旧牌归你，每张 1 分。</p></article><article><span class="rule-number">02</span><h3>挖角 SCOUT</h3><p id="rule-scout-desc">取舞台任一端的一张牌，可翻转后插入手牌任意位置。多人局中，原表演者得 1 筹码。</p></article><article id="rule-scout-show"><span class="rule-number">03</span><h3>挖角并演出</h3><p>先挖角，再立即演出压过剩余舞台。三至五人局每轮一次，双人局不可使用。</p></article></div>

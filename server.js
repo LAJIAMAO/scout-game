@@ -5,6 +5,7 @@ const {DatabaseSync}=require('node:sqlite');
 const {Server}=require('socket.io');
 const ScoutGame=require('./game/scoutGame'),AI=require('./game/ai');
 const APP_VERSION=require('./package.json').version;
+const P=require('./public/presentation');
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const cleanName=s=>typeof s==='string'?s.replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,16):'';
 function networkAddresses(port){
@@ -22,7 +23,16 @@ function createScoutServer(options={}){
   db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS rooms(code TEXT PRIMARY KEY, snapshot TEXT NOT NULL, touched INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS results(match_id TEXT, round INTEGER, data TEXT NOT NULL, PRIMARY KEY(match_id,round));');
   const save=db.prepare('INSERT OR REPLACE INTO rooms VALUES(?,?,?)'),del=db.prepare('DELETE FROM rooms WHERE code=?'),saveResult=db.prepare('INSERT OR REPLACE INTO results VALUES(?,?,?)');
   const rooms=new Map(),connections=new Map();let closing=false;
-  const grace=options.disconnectMs??90000,aiDelay=options.aiDelayMs??850;
+  const grace=options.disconnectMs??90000,aiDelay=options.aiDelayMs??1600;
+  const clock=options.clock||Date.now,presentationScale=options.presentationScale??1;
+  function stampPresentation(g,previousId){
+    const a=g.lastAction;if(!a||a.id===previousId)return;
+    a.startedAt=clock();a.durationMs=Math.round(P.DURATIONS[a.kind]*presentationScale);a.until=a.startedAt+a.durationMs;
+    a.settlementAt=a.roundEnded?a.until+Math.round(P.CURTAIN_MS*presentationScale):0;
+    g.presentationUntil=a.settlementAt||a.until;g.settlementAt=a.settlementAt;
+  }
+  function presentationBusy(g){return clock()<(g.presentationUntil||0);}
+  function busyResponse(g){return {success:false,code:'PRESENTATION_BUSY',msg:'正在展示上一位玩家的行动，请稍候',retryAfterMs:Math.max(0,g.presentationUntil-clock())};}
   for(const row of db.prepare('SELECT * FROM rooms').all()){
     if(Date.now()-row.touched>24*60*60*1000){del.run(row.code);continue;}
     try{
@@ -141,10 +151,12 @@ function createScoutServer(options={}){
       if(typeof data.actionId!=='string'||!/^[\w-]{8,80}$/.test(data.actionId))return {success:false,msg:'缺少有效的操作编号'};
       const previous=r.requests.find(q=>q.playerId===id&&q.id===data.actionId);
       if(previous)return {...previous.result,duplicate:true};
+      if(presentationBusy(r.game)&&['action_show','action_scout','action_scout_and_show','start_game','next_round','restart_game','return_lobby'].includes(event))return busyResponse(r.game);
       if(!Number.isInteger(data.version)||data.version!==r.game.version){broadcast(r);return {success:false,msg:'牌桌已更新，请重新选择',stale:true};}
       const p=r.game.players.find(p=>p.id===id);
-      const backup=JSON.stringify(r.game),result=handler(r.game,p,data);
+      const backup=JSON.stringify(r.game),previousActionId=r.game.lastAction?.id,result=handler(r.game,p,data);
       if(!result.success)return result;
+      stampPresentation(r.game,previousActionId);
       r.game.version++;const response={...result,success:true,version:r.game.version};
       r.requests.push({playerId:id,id:data.actionId,result:response});r.requests=r.requests.slice(-500);
       try{persist(r);}catch(e){r.game=ScoutGame.restore(JSON.parse(backup));r.requests.pop();throw e;}
@@ -153,6 +165,7 @@ function createScoutServer(options={}){
     register('request_hint',()=>{
       const r=rooms.get(socket.data.roomId),id=socket.data.playerId;
       if(!r||!r.game.settings.allowHints||!r.game.checkTurn(id).success)return {success:false,msg:'当前不能使用建议'};
+      if(presentationBusy(r.game))return busyResponse(r.game);
       const move=AI.choose(r.game.getClientState(id),'hard');return move?{success:true,event:move.event,data:move.data,label:move.label,msg:'建议依据当前手牌结构与公开局势，结果不保证最优'}:{success:false,msg:'当前没有可执行的行动'};
     });
     register('leave_room',()=>{detach(socket,true);return {success:true};});
@@ -160,7 +173,7 @@ function createScoutServer(options={}){
   });
   function tick(){
     if(closing)return;
-    const now=Date.now();
+    const now=clock();
     for(const [roomId,r] of rooms){
       const g=r.game,online=g.players.filter(p=>!p.isBot&&p.connected&&!p.left);
       if(!online.length){r.botDue=null;if(now-r.touched>24*60*60*1000){rooms.delete(roomId);del.run(roomId);}continue;}
@@ -172,6 +185,7 @@ function createScoutServer(options={}){
       }
       if(changed){transferHost(g);commit(r);}
       if(!['PREPARE','PLAYING'].includes(g.phase)){r.botDue=null;continue;}
+      if(presentationBusy(g)){r.botDue=null;continue;}
       const actor=g.phase==='PREPARE'?g.players.find(p=>!p.isReady&&(p.isBot||p.controlled)):g.players[g.activePlayerIndex];
       if(!actor||!(actor.isBot||actor.controlled)){r.botDue=null;continue;}
       const key=`${g.phase}:${actor.id}:${g.version}`;
@@ -181,11 +195,11 @@ function createScoutServer(options={}){
       if(g.phase==='PREPARE'){if(AI.prepare(actor.hand))g.flipHand(actor.id);g.setReady(actor.id);commit(r);}
       else{
         const move=AI.choose(g.getClientState(actor.id),actor.difficulty);
-        if(move){let result;
+        if(move){let result;const previousActionId=g.lastAction?.id;
           if(move.event==='action_show')result=g.playShow(actor.id,move.data.selectedIndices);
           else if(move.event==='action_scout')result=g.playScout(actor.id,move.data.side,move.data.flip,move.data.insertIndex);
           else result=g.playScoutAndShow(actor.id,move.data.scoutData,move.data.showIndices);
-          if(result.success)commit(r);else console.error('电脑行动校验失败',result.msg);
+          if(result.success){stampPresentation(g,previousActionId);commit(r);}else console.error('电脑行动校验失败',result.msg);
         }else{g.checkDuelBlocked();commit(r);}
       }
     }

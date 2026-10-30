@@ -7,7 +7,7 @@ function send(s,event,data={}){return new Promise((resolve,reject)=>s.timeout(30
 let index=0;function act(s,event,data={}){return send(s,event,{...data,version:s.state.version,actionId:`network-action-${++index}`});}
 async function settle(){await sleep(30);}
 test('双人真实双端请求：隐藏特殊行动、三次预算、重复请求不多拿、第四次与特殊行动均由服务端拒绝',async()=>{
-  const service=createScoutServer({dbPath:':memory:',tickMs:100000}),sockets=[];
+  const service=createScoutServer({dbPath:':memory:',tickMs:100000,presentationScale:0}),sockets=[];
   try{
     const port=await service.listen(0),a=await client(port),b=await client(port);sockets.push(a,b);
     const room=await send(a,'create_room',{playerName:'双人A'});assert.ok(room.success);assert.ok((await send(b,'join_room',{roomId:room.roomId,playerName:'双人B'})).success);await settle();
@@ -29,7 +29,7 @@ test('双人真实双端请求：隐藏特殊行动、三次预算、重复请�
 });
 test('真实 Socket.IO 多客户端：组房、权限、重放、旧版本、恢复、托管、转交、退出与磁盘恢复',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'scout-network-')),dbPath=path.join(dir,'test.sqlite'),sockets=[];
-  let service=createScoutServer({dbPath,disconnectMs:25,aiDelayMs:0,tickMs:100000});
+  let service=createScoutServer({dbPath,disconnectMs:25,aiDelayMs:0,tickMs:100000,presentationScale:0});
   let a,b,resume,c;
   try{
     let port=await service.listen(0,'0.0.0.0');a=await client(port);b=await client(port);sockets.push(a,b);
@@ -62,7 +62,7 @@ test('真实 Socket.IO 多客户端：组房、权限、重放、旧版本、恢
     }
     assert.equal(game.phase,'ROUND_OVER');const history=structuredClone(game.history),beforeRestart=structuredClone(game.getClientState(created.playerId));
     await service.close();sockets.forEach(s=>s.disconnect());
-    service=createScoutServer({dbPath,disconnectMs:25,aiDelayMs:0,tickMs:100000});port=await service.listen(0);
+    service=createScoutServer({dbPath,disconnectMs:25,aiDelayMs:0,tickMs:100000,presentationScale:0});port=await service.listen(0);
     const restored=service.rooms.get(created.roomId).game;assert.deepEqual(restored.history,history);assert.deepEqual(restored.getClientState(created.playerId).myHand,beforeRestart.myHand);
     const second=await client(port);sockets.push(second);assert.ok((await send(second,'room_rejoin',{roomId:created.roomId,token:created.token})).success);await settle();
     assert.equal(second.state.myPlayerId,created.playerId);assert.deepEqual(second.state.history,history);
