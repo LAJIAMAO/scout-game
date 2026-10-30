@@ -9,7 +9,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/" aria-label="马戏星探首页"><img src="tent.svg" alt="" width="36" height="36"><span>SCOUT<small>马戏星探</small></span></a>
-    <div class="top-actions"><span id="app-version" class="version-tag">v2.0.2</span><span id="connection" class="connection">连接中</span><button id="rules-open" class="quiet">玩法</button><button id="settings-open" class="quiet" aria-label="声音与动效设置">设置</button></div>
+    <div class="top-actions"><span id="app-version" class="version-tag">v2.0.3</span><span id="connection" class="connection">连接中</span><button id="rules-open" class="quiet">玩法</button><button id="settings-open" class="quiet" aria-label="声音与动效设置">设置</button></div>
   </header>
   <main id="app">
     <section id="home" class="home">
@@ -36,12 +36,12 @@
       <details class="activity"><summary>最近发生了什么</summary><ol id="activity-list"></ol></details>
     </section>
   </main>
-  <footer id="footer">SCOUT · 马戏星探 <span>局域网版 / v2.0.2</span></footer>
+  <footer id="footer">SCOUT · 马戏星探 <span>局域网版 / v2.0.3</span></footer>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="rules-dialog" class="dialog"><div class="dialog-top"><span class="eyebrow">HOW TO PLAY</span><button class="quiet close-dialog" aria-label="关闭规则">关闭 ×</button></div><div class="help-mode-tabs" aria-label="选择规则人数"><button id="help-mode-duel" class="secondary" aria-pressed="false">双人规则</button><button id="help-mode-classic" class="secondary" aria-pressed="true">3–5 人规则</button></div><h2 id="rules-title">三种行动，一场好戏。</h2>
     <div class="rule-grid"><article><span class="rule-number">01</span><h3>演出 SHOW</h3><p>选择手中相邻的同号或连续顺子，压过舞台。台上旧牌归你，每张 1 分。</p></article><article><span class="rule-number">02</span><h3>挖角 SCOUT</h3><p id="rule-scout-desc">取舞台任一端的一张牌，可翻转后插入手牌任意位置。多人局中，原表演者得 1 筹码。</p></article><article id="rule-scout-show"><span class="rule-number">03</span><h3>挖角并演出</h3><p>先挖角，再立即演出压过剩余舞台。三至五人局每轮一次，双人局不可使用。</p></article></div>
     <h3>记住这四件事</h3><ul class="rule-list"><li><strong>不能理牌。</strong>仅在准备时旋转整手牌；已确认的手牌不能重排、单独翻转。</li><li><strong>张数优先。</strong>同张数时同号胜顺子，同类型比较点数；递增和递减顺子都可以。</li><li id="round-end-rule"><strong>结束与计分。</strong>有人出完，或所有对手都只挖角而舞台仍有牌，本轮结束。得分牌＋筹码－手牌；舞台无人压过的表演者免扣手牌。</li><li><strong>轮流开场。</strong>一共进行与人数相同的轮数，起始玩家逐轮轮换；总分最高获胜，并列则共享胜利。</li></ul>
-    <div class="rule-duel"><h3>双人局：只选演出或挖角</h3><p>移除 9/10 牌，每人 11 张；余下 22 张留到第二轮。每人每轮只有 3 枚挖角筹码，每挖 1 张花费 1 枚，整轮最多挖角 3 次。挖角后仍由自己行动，不给对手筹码，也不能使用“挖角并演出”。筹码用完后只能演出；无法演出则立即结算。未用的筹码每枚记 1 分，第二轮重新补为 3 枚并更换起始玩家。</p></div>
+    <div class="rule-duel"><h3>双人局：只选演出或挖角</h3><p>移除 9/10 牌，每人 11 张；余下 22 张留到第二轮。每人每轮只有 3 枚挖角筹码，每挖 1 张花费 1 枚，整轮最多挖角 3 次。每回合只能演出或挖角一次，挖角后立即轮到对手，不给对手筹码，也不能使用“挖角并演出”。筹码用完后只能演出；无法演出则立即结算。未用的筹码每枚记 1 分，第二轮重新补为 3 枚并更换起始玩家。</p></div>
     <p class="muted small">规则依据 Oink Games SCOUT 英文规则书 v1.1；本作是独立制作的本地游戏界面。<a href="https://oinkgames.com/en/games/analog/scout/" target="_blank" rel="noopener">出版方介绍 ↗</a></p>
   </dialog>
   <dialog id="settings-dialog" class="dialog compact"><div class="dialog-top"><span class="eyebrow">MAKE YOURSELF COMFORTABLE</span><button class="quiet close-dialog">关闭 ×</button></div><h2>让好戏合你心意。</h2><label class="setting-line"><span>演出音效</span><input type="checkbox" id="sound-enabled" checked></label><label for="volume">音量</label><input id="volume" type="range" min="0" max="100" value="35"><label class="setting-line"><span>减少动效</span><input id="reduced-motion" type="checkbox"></label><p class="muted">设置只保存在这台设备。</p></dialog>

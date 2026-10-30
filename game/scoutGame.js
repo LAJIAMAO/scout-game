@@ -95,13 +95,13 @@ class ScoutGame {
     const owner=this.players.find(p=>p.id===this.currentShow.playerId);
     p.hand=v.hand;if(duel)p.scoutChips--;else owner.scoutChips++;
     if(v.remaining.length)this.currentShow={...this.currentShow,cards:v.remaining,combo:v.combo};else this.currentShow=null;
-    this.log(`${p.name} 从${side==='left'?'左':'右'}端挖角 1 张${duel?` · 本轮还可挖角 ${p.scoutChips} 次，继续行动`:` · ${owner.name} 获得 1 筹码，行动结束`}`);
+    this.log(`${p.name} 从${side==='left'?'左':'右'}端挖角 1 张${duel?` · 本轮还可挖角 ${p.scoutChips} 次，本回合结束`:` · ${owner.name} 获得 1 筹码，行动结束`}`);
     if(!this.currentShow)this.consecutiveScouts=0;else this.consecutiveScouts++;
-    if(duel)this.checkDuelBlocked();
+    if(duel){this.nextTurn();this.checkDuelBlocked();}
     else if(this.currentShow&&this.consecutiveScouts>=this.players.length-1)this.endRound('LOOP',owner.id);
     else this.nextTurn();
-    this.recordAction('scout',p,before,{sourceSide:side,scoutedCard,capturedCount:0,ownerChipAward:duel?0:1});
-    return {success:true,action:'scout',taken:1,remainingScouts:duel?p.scoutChips:null,turnEnded:!duel||this.phase!=='PLAYING',roundEnded:this.phase!=='PLAYING'};
+    this.recordAction('scout',p,before,{sourceSide:side,scoutedCard,capturedCount:0,ownerChipAward:duel?0:1,turnEnded:true,nextPlayerId:this.phase==='PLAYING'?this.players[this.activePlayerIndex].id:null});
+    return {success:true,action:'scout',taken:1,remainingScouts:duel?p.scoutChips:null,turnEnded:true,roundEnded:this.phase!=='PLAYING'};
   }
   playScoutAndShow(id,data,indices){
     const turn=this.checkTurn(id);if(!turn.success)return turn;
@@ -126,7 +126,7 @@ class ScoutGame {
   checkDuelBlocked(){
     if(this.players.length!==2||this.phase!=='PLAYING')return;
     const p=this.players[this.activePlayerIndex];
-    if(p.scoutChips===0&&!R.findAllPlayableCombos(p.hand,this.currentShow?.combo).length)this.endRound('BLOCKED',this.currentShow.playerId);
+    if(p.scoutChips===0&&!R.findAllPlayableCombos(p.hand,this.currentShow?.combo).length)this.endRound('BLOCKED',this.players[(this.activePlayerIndex+1)%2].id);
   }
   endRound(type,id){
     if(this.phase!=='PLAYING')return;
@@ -144,12 +144,23 @@ class ScoutGame {
     const me=this.players.find(p=>p.id===id);
     const duel=this.players.length===2;
     return {appVersion:require('../package.json').version,serverTime:Date.now(),lastAction:this.lastAction||null,presentationUntil:this.presentationUntil||0,settlementAt:this.settlementAt||0,roomId:this.roomId,phase:this.phase,round:this.round,maxRounds:this.maxRounds,version:this.version,settings:this.settings,
-      rules:{mode:duel?'duel':'classic',label:duel?'双人规则':'经典规则',scoutEndsTurn:!duel,scoutLimitPerRound:duel?3:null,allowScoutAndShow:!duel},
+      rules:{mode:duel?'duel':'classic',label:duel?'双人轮流行动':'经典规则',scoutEndsTurn:true,scoutLimitPerRound:duel?3:null,allowScoutAndShow:!duel},
       hostId:this.hostId,activePlayerId:this.players[this.activePlayerIndex]?.id,currentShow:this.currentShow,logs:this.logs.slice(0,25),
       history:this.history,lastRoundResult:this.lastRoundResult,myHand:me?.hand||[],myPlayerId:id,
       players:this.players.map(p=>({id:p.id,name:p.name,isBot:p.isBot,difficulty:p.difficulty,connected:p.connected,controlled:p.controlled,left:p.left,disconnectedAt:p.disconnectedAt,
         isHost:this.hostId===p.id,handCount:p.hand.length,scorePileCount:p.scorePile.length,scoutChips:p.scoutChips,scoutsRemaining:duel?p.scoutChips:null,hasScoutAndShow:!duel&&p.hasScoutAndShow,isReady:p.isReady,totalScore:p.totalScore,roundScore:p.roundScore}))};
   }
-  static restore(raw){return Object.assign(new ScoutGame(raw.roomId,raw.settings),raw);}
+  static restore(raw){
+    const g=Object.assign(new ScoutGame(raw.roomId,raw.settings),raw),a=g.lastAction;
+    // Older saved duels kept the Scout actor active. Advance this completed action once.
+    if(g.players.length===2&&g.phase==='PLAYING'&&a?.kind==='scout'&&a.turnEnded!==true&&g.players[g.activePlayerIndex]?.id===a.actorId){
+      g.nextTurn();g.checkDuelBlocked();a.turnEnded=true;a.nextPlayerId=g.phase==='PLAYING'?g.players[g.activePlayerIndex].id:null;
+      if(g.phase!=='PLAYING'){
+        a.roundEnded=true;a.outcome={reason:g.lastRoundResult.triggerType,playerId:g.lastRoundResult.triggerPlayerId,playerName:g.lastRoundResult.triggerPlayerName};
+        a.until=Math.max(a.until||0,Date.now());a.settlementAt=a.until+P.CURTAIN_MS;g.settlementAt=a.settlementAt;g.presentationUntil=a.settlementAt;
+      }
+    }
+    return g;
+  }
 }
 module.exports=ScoutGame;

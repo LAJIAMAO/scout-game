@@ -17,7 +17,7 @@ const $=id=>document.getElementById(id),R=window.ScoutRules,P=window.ScoutPresen
 if(location.protocol==='https:'&&!['localhost','127.0.0.1','::1','[::1]'].includes(location.hostname)){
   document.querySelector('.intro-meta span:last-child').textContent='好友在线联机';
   document.querySelector('.entry-note').textContent='分享房间链接，手机或电脑浏览器即可加入。';
-  $('footer').querySelector('span').textContent='在线版 / v2.0.2';
+  $('footer').querySelector('span').textContent='在线版 / v2.0.3';
 }
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const button=(text,cls,action,disabled=false)=>{const b=el('button',cls,text);b.disabled=disabled;b.addEventListener('click',action);return b;};
@@ -84,9 +84,9 @@ function scoutsLeft(p=myPlayer()){return p?.scoutsRemaining??p?.scoutChips??0;}
 function syncRulesHelp(duel=!!isDuel()){
   $('rules-dialog').classList.toggle('duel-help',duel);
   $('help-mode-duel').setAttribute('aria-pressed',String(duel));$('help-mode-classic').setAttribute('aria-pressed',String(!duel));
-  $('rules-title').textContent=duel?'双人局，只选一种行动。':'三种行动，一场好戏。';
+  $('rules-title').textContent=duel?'双人局，每回合只做一种行动。':'三种行动，一场好戏。';
   $('rule-scout-show').hidden=duel;
-  $('rule-scout-desc').textContent=duel?'每次只取舞台一端的 1 张，花费 1 枚自己的筹码。每轮共 3 次；挖角后仍由自己行动。不给对手筹码。':'取舞台任一端的 1 张，可翻转后插入手牌任意位置。原表演者得 1 筹码，你的回合结束。';
+  $('rule-scout-desc').textContent=duel?'每次只取舞台一端的 1 张，花费 1 枚自己的筹码。每轮共 3 次；挖角完成即结束回合，轮到对手。不给对手筹码。':'取舞台任一端的 1 张，可翻转后插入手牌任意位置。原表演者得 1 筹码，你的回合结束。';
   $('round-end-rule').textContent=duel?'结束与计分：有人出完，或一方无法演出且挖角次数为 0 时，本轮结束。得分牌＋未用筹码－手牌；使对手无法行动的表演者免扣手牌。':'结束与计分：有人出完，或所有对手都只挖角而舞台仍有牌，本轮结束。得分牌＋筹码－手牌；舞台无人压过的表演者免扣手牌。';
 }
 function myTurn(){return state?.phase==='PLAYING'&&state.activePlayerId===state.myPlayerId&&(tutorial||socket.connected)&&!pending&&!presentationLocked();}
@@ -97,7 +97,7 @@ async function command(event,data={}){
   pending=true;render();
   const actionId=`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,14)}`;
   const res=await request(event,{...data,version:state.version,actionId});pending=false;
-  if(!res.success)toast(res.msg);else{draft=null;selected.clear();Sound.play(event==='action_scout'?'scout':event==='action_scout_and_show'?'combo':event==='action_show'?'show':'click');if(event==='action_scout'&&state.phase==='PLAYING')toast(isDuel()?`已挖角 1 张 · 本轮剩余 ${res.remainingScouts??scoutsLeft()} 次，仍由你行动`:'已挖角 1 张 · 本回合结束，轮到下一位');}
+  if(!res.success)toast(res.msg);else{draft=null;selected.clear();Sound.play(event==='action_scout'?'scout':event==='action_scout_and_show'?'combo':event==='action_show'?'show':'click');if(event==='action_scout'&&state.phase==='PLAYING')toast(isDuel()?`已挖角 1 张 · 本轮剩余 ${res.remainingScouts??scoutsLeft()} 次 · 本回合结束，轮到对手`:'已挖角 1 张 · 本回合结束，轮到下一位');}
   render();return res;
 }
 async function enter(practice=false,join=false){
@@ -143,7 +143,7 @@ function renderLobby(){
     if(p.isBot&&host())row.append(button('移除','quiet',()=>command('remove_bot',{botId:p.id}),pending));
     list.append(row);
   });paper.append(list);
-  if(isDuel())paper.append(el('p','duel-lobby-note','双人规则：演出或挖角二选一；每轮每人最多挖角 3 次，每次 1 张，挖角后继续自己行动。不使用“挖角并演出”。'));
+  if(isDuel())paper.append(el('p','duel-lobby-note','双人规则：演出或挖角二选一；每轮每人最多挖角 3 次，每次 1 张，挖角后立即换人。不使用“挖角并演出”。'));
   if(host()){
     const actions=el('div','lobby-buttons'),difficulty=$('difficulty').cloneNode(true);difficulty.id='bot-difficulty';difficulty.setAttribute('aria-label','新增电脑难度');difficulty.value=state.settings.difficulty;
     actions.append(difficulty,button('＋ 添加电脑','secondary',()=>command('add_bot',{difficulty:difficulty.value}),pending||state.players.length>=5),button('拉开帷幕 →','primary',()=>command('start_game'),pending||state.players.length<2));paper.append(actions);
@@ -162,7 +162,7 @@ function renderTableTop(){
 }
 function renderModeRules(){
   const box=$('mode-rules');box.replaceChildren();box.hidden=!isDuel();
-  if(isDuel())box.append(el('strong',null,'双人 · 演出或挖角（二选一）'),el('span','duel-rule-detail','每人每轮最多挖 3 次，每次只拿 1 张；挖角后仍由自己行动。'));
+  if(isDuel())box.append(el('strong',null,'双人 · 演出或挖角（二选一）'),el('span','duel-rule-detail','每人每轮最多挖 3 次，每次只拿 1 张；挖角后立即换人。'));
 }
 function renderSeats(){
   $('seats').replaceChildren();state.players.filter(p=>p.id!==state.myPlayerId).forEach(p=>{
@@ -214,7 +214,7 @@ function renderPublicAction(a,phase){
       detail=`${R.analyzeCombo(a.shownCards)?.label||'新的表演'}${a.capturedCount?` · 收下 ${a.capturedCount} 张得分牌`:''}`;
     }else{
       title=`${a.actorName} · ${actionName}完成`;
-      detail=a.kind==='scout'?a.remainingScouts!==null?`手牌 +1 · 本轮还可挖角 ${a.remainingScouts} 次，仍由本人行动`:`手牌 +1 · ${a.sourceOwnerName} 筹码 +1，下一位稍后行动`:a.kind==='scout_show'?`先挖 1 张，再打出 ${a.shownCards.length} 张 · 本轮特殊机会已使用`:`${R.analyzeCombo(a.shownCards)?.label||'演出成功'}${a.capturedCount?` · 得分牌 +${a.capturedCount}`:''}`;
+      detail=a.kind==='scout'?a.remainingScouts!==null?`手牌 +1 · 本轮还可挖角 ${a.remainingScouts} 次 · 本回合结束，下一位稍后行动`:`手牌 +1 · ${a.sourceOwnerName} 筹码 +1，下一位稍后行动`:a.kind==='scout_show'?`先挖 1 张，再打出 ${a.shownCards.length} 张 · 本轮特殊机会已使用`:`${R.analyzeCombo(a.shownCards)?.label||'演出成功'}${a.capturedCount?` · 得分牌 +${a.capturedCount}`:''}`;
     }
     hud.append(el('span','action-kicker',phase==='curtain'?'CURTAIN CALL / 谢幕':a.kind==='scout_show'?'SCOUT & SHOW / 分步展示':'TABLE ACTION / 全场可见'),el('strong','action-title',title),el('span','action-detail',detail));
     if(phase==='curtain')hud.append(el('span','curtain-countdown'));
@@ -274,7 +274,7 @@ function renderControls(){
   if(draft){
     if(draft.step==='place'){
       const c=state.currentShow.cards[draft.side==='left'?0:state.currentShow.cards.length-1];
-      box.append(button(`↻ 新牌 ${draft.flip?c.bottom:c.top} / ${draft.flip?c.top:c.bottom}`,'secondary',()=>{draft.flip=!draft.flip;renderHand();renderControls();}),button(draft.mode==='combo'?'确认插入，继续选牌':isDuel()?'挖 1 张，花费 1 次':'挖 1 张，结束回合','primary',()=>{
+      box.append(button(`↻ 新牌 ${draft.flip?c.bottom:c.top} / ${draft.flip?c.top:c.bottom}`,'secondary',()=>{draft.flip=!draft.flip;renderHand();renderControls();}),button(draft.mode==='combo'?'确认插入，继续选牌':isDuel()?'挖 1 张，花费 1 次并结束回合':'挖 1 张，结束回合','primary',()=>{
         if(draft.index===null)return;
         if(draft.mode==='combo'){draft.step='show';selected.clear();render();}
         else command('action_scout',{side:draft.side,flip:draft.flip,insertIndex:draft.index});
@@ -293,7 +293,7 @@ function renderControls(){
     const v=preview(),hand=comboMode?v.hand:state.myHand,stage=comboMode?v.combo:state.currentShow?.combo;
     const valid=R.selection(hand,[...selected],stage);
     if(selected.size)feedback.textContent=valid.success?`${valid.combo.label} · 可以${stage?'压制':'开场'}`:valid.msg;
-    else feedback.textContent=myTurn()?isDuel()?scoutsLeft()>0?'演出或挖角二选一。每挖 1 张花费 1 次，挖角后仍由你行动。':'本轮挖角次数已用完，只能演出。':'普通挖角拿 1 张后结束回合；挖角并演出需要消耗本轮一次的特殊机会。':'可以查看规则，等待轮到自己。';
+    else feedback.textContent=myTurn()?isDuel()?scoutsLeft()>0?'演出或挖角二选一。每挖 1 张花费 1 次，挖角后立即轮到对手，不能接着挖角或演出。':'本轮挖角次数已用完，只能演出。':'普通挖角拿 1 张后结束回合；挖角并演出需要消耗本轮一次的特殊机会。':state.lastAction?.kind==='scout'&&state.lastAction.actorId===state.myPlayerId?'你已挖角 1 张，本回合已结束。请等待对手行动。':'可以查看规则，等待轮到自己。';
     box.append(button(comboMode?'确认挖角并演出':valid.success?`演出 · ${valid.cards.length} 张`:'演出','primary',()=>comboMode?command('action_scout_and_show',{scoutData:{side:draft.side,flip:draft.flip,insertIndex:draft.index},showIndices:[...selected]}):command('action_show',{selectedIndices:[...selected]}),!myTurn()||!valid.success));
   }
 }

@@ -6,27 +6,43 @@ async function client(port){const s=io(`http://127.0.0.1:${port}`,{transports:['
 function send(s,event,data={}){return new Promise((resolve,reject)=>s.timeout(3000).emit(event,data,(err,res)=>err?reject(err):resolve(res)));}
 let index=0;function act(s,event,data={}){return send(s,event,{...data,version:s.state.version,actionId:`network-action-${++index}`});}
 async function settle(){await sleep(30);}
-test('双人真实双端请求：隐藏特殊行动、三次预算、重复请求不多拿、第四次与特殊行动均由服务端拒绝',async()=>{
+test('双人真实双端：挖角一次立即换人，原玩家连续操作拒绝，刷新不取回回合，三次预算跨回合累计',async()=>{
   const service=createScoutServer({dbPath:':memory:',tickMs:100000,presentationScale:0}),sockets=[];
   try{
-    const port=await service.listen(0),a=await client(port),b=await client(port);sockets.push(a,b);
+    const port=await service.listen(0);let a=await client(port);const b=await client(port);sockets.push(a,b);
     const room=await send(a,'create_room',{playerName:'双人A'});assert.ok(room.success);assert.ok((await send(b,'join_room',{roomId:room.roomId,playerName:'双人B'})).success);await settle();
     assert.ok((await act(a,'start_game')).success);await settle();assert.ok((await act(a,'ready')).success);await settle();assert.ok((await act(b,'ready')).success);await settle();
-    const g=service.rooms.get(room.roomId).game;g.activePlayerIndex=0;g.players[0].hand=[{id:20,top:1,bottom:2}];g.players[1].hand=[{id:21,top:1,bottom:3}];
-    const cards=[1,2,3,4].map((id,i)=>({id,top:7,bottom:i+2}));g.currentShow={cards,combo:require('../public/rules').analyzeCombo(cards),playerId:g.players[1].id,playerName:'双人B'};g.version++;
+    const g=service.rooms.get(room.roomId).game;g.activePlayerIndex=0;g.players[0].hand=[{id:20,top:1,bottom:2}];g.players[1].hand=[21,22,23,24].map(id=>({id,top:9,bottom:1}));g.players[1].hand.push({id:25,top:1,bottom:3});
+    const cards=Array.from({length:8},(_,i)=>({id:i+1,top:7,bottom:2}));g.currentShow={cards,combo:require('../public/rules').analyzeCombo(cards),playerId:g.players[1].id,playerName:'双人B'};g.version++;
     for(const s of sockets)service.io.to(s.id).emit('game_state_update',g.getClientState(s.state.myPlayerId));await settle();
-    assert.equal(a.state.rules.allowScoutAndShow,false);assert.equal(a.state.players[0].hasScoutAndShow,false);assert.equal(a.state.players[0].scoutsRemaining,3);
-    const initial=JSON.stringify(g);assert.equal((await act(a,'action_scout_and_show',{scoutData:{side:'left',flip:false,insertIndex:1},showIndices:[1]})).success,false);assert.equal(JSON.stringify(g),initial);
-    for(let i=0;i<3;i++){
-      const data={actionId:`duel-scout-${i}`,version:a.state.version,side:'left',flip:false,insertIndex:a.state.myHand.length};
-      const res=await send(a,'action_scout',data);assert.ok(res.success);assert.equal(res.taken,1);assert.equal(res.remainingScouts,2-i);assert.equal(res.turnEnded,false);await settle();
-      assert.equal(a.state.activePlayerId,a.state.myPlayerId);assert.equal(a.state.players[0].scoutsRemaining,2-i);assert.equal(b.state.players[0].scoutsRemaining,2-i);assert.equal(a.state.players[1].scoutsRemaining,3);
-      const count=a.state.myHand.length;assert.ok((await send(a,'action_scout',data)).duplicate);await settle();assert.equal(a.state.myHand.length,count);
+    assert.equal(a.state.rules.scoutEndsTurn,true);assert.equal(a.state.rules.allowScoutAndShow,false);assert.equal(a.state.players[0].hasScoutAndShow,false);
+    for(let i=0;i<3;i++)for(let actor=0;actor<2;actor++){
+      let current=actor===0?a:b;const next=actor===0?b:a;
+      const data={actionId:`duel-scout-${i}-${actor}`,version:current.state.version,side:'left',flip:false,insertIndex:current.state.myHand.length};
+      const res=await send(current,'action_scout',data);assert.ok(res.success);assert.equal(res.taken,1);assert.equal(res.remainingScouts,2-i);assert.equal(res.turnEnded,true);await settle();
+      for(const s of [a,b]){assert.equal(s.state.activePlayerId,next.state.myPlayerId);assert.equal(s.state.players[actor].scoutsRemaining,2-i);assert.equal(s.state.lastAction.nextPlayerId,next.state.myPlayerId);}
+      const before=JSON.stringify(g);for(const [event,payload] of [['action_scout',{side:'left',flip:false,insertIndex:0}],['action_show',{selectedIndices:[0]}],['action_scout_and_show',{scoutData:{side:'left',flip:false,insertIndex:0},showIndices:[0]}]])assert.equal((await act(current,event,payload)).success,false);assert.equal(JSON.stringify(g),before);
+      assert.ok((await send(current,'action_scout',data)).duplicate);await settle();assert.equal(JSON.stringify(g),before);
+      if(i===0&&actor===0){a.disconnect();a=await client(port);sockets.push(a);assert.ok((await send(a,'room_rejoin',{roomId:room.roomId,token:room.token})).success);await settle();assert.equal(a.state.activePlayerId,b.state.myPlayerId);assert.equal(a.state.myHand.length,2);assert.equal((await act(a,'action_scout',{side:'left',flip:false,insertIndex:0})).success,false);}
     }
-    const before=JSON.stringify(g);const fourth=await act(a,'action_scout',{side:'left',flip:false,insertIndex:0});assert.equal(fourth.success,false);assert.equal(JSON.stringify(g),before);
+    const before=JSON.stringify(g);assert.equal((await act(a,'action_scout',{side:'left',flip:false,insertIndex:0})).success,false);assert.equal(JSON.stringify(g),before);
     assert.ok((await act(a,'action_show',{selectedIndices:[1,2,3]})).success);await settle();assert.equal(b.state.activePlayerId,b.state.myPlayerId);assert.equal(a.state.players[0].scoutsRemaining,0);
   }finally{for(const s of sockets)s.disconnect();await service.close();}
 });
+
+test('双人 AI 挖角后只换人一次：展示结束后不会再自行挖角或演出',async()=>{
+  let now=Date.now();const service=createScoutServer({dbPath:':memory:',tickMs:100000,clock:()=>now,aiDelayMs:1600}),sockets=[];
+  try{
+    const port=await service.listen(0),a=await client(port);sockets.push(a);const room=await send(a,'create_room',{playerName:'真人'});await settle();assert.ok((await act(a,'add_bot')).success);await settle();assert.ok((await act(a,'start_game')).success);await settle();
+    const g=service.rooms.get(room.roomId).game,[human,bot]=g.players;g.phase='PLAYING';g.activePlayerIndex=1;human.hand=[1,2,3,4].map(id=>({id,top:3,bottom:1}));bot.hand=[{id:5,top:1,bottom:2},{id:6,top:2,bottom:1}];
+    const cards=[7,8,9].map(id=>({id,top:9,bottom:5}));g.currentShow={cards,combo:require('../public/rules').analyzeCombo(cards),playerId:human.id,playerName:human.name};
+    service.tick();now+=1600;service.tick();await settle();assert.equal(g.lastAction.kind,'scout');assert.equal(g.activePlayerIndex,0);assert.equal(bot.scoutChips,2);const id=g.lastAction.id;
+    assert.equal((await act(a,'action_show',{selectedIndices:[0,1,2,3]})).code,'PRESENTATION_BUSY');
+    now=g.presentationUntil+10000;service.tick();service.tick();await settle();assert.equal(g.lastAction.id,id);assert.equal(bot.scoutChips,2);assert.equal(a.state.activePlayerId,human.id);
+    assert.ok((await act(a,'action_show',{selectedIndices:[0,1,2,3]})).success);
+  }finally{for(const s of sockets)s.disconnect();await service.close();}
+});
+
 test('真实 Socket.IO 多客户端：组房、权限、重放、旧版本、恢复、托管、转交、退出与磁盘恢复',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'scout-network-')),dbPath=path.join(dir,'test.sqlite'),sockets=[];
   let service=createScoutServer({dbPath,disconnectMs:25,aiDelayMs:0,tickMs:100000,presentationScale:0});

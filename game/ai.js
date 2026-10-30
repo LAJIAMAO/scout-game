@@ -6,7 +6,7 @@ function candidates(state){
   const out=R.findAllPlayableCombos(hand,stage?.combo).map(c=>({event:'action_show',data:{selectedIndices:c.indices},remaining:hand.filter((_,i)=>!c.indices.includes(i)),removed:c.cards.length,points:stage?.cards.length||0,label:`演出 ${c.combo.label}`}));
   if(stage&&(state.players.length!==2||me.scoutChips>0))for(const side of stage.cards.length===1?['left']:['left','right'])for(const flip of [false,true])for(let insertIndex=0;insertIndex<=hand.length;insertIndex++){
     const data={side,flip,insertIndex},v=R.previewScout(hand,stage.cards,data);
-    out.push({event:'action_scout',data,remaining:v.hand,removed:-1,points:0,label:`从${side==='left'?'左':'右'}端挖角${flip?'并翻面':''}，插入第 ${insertIndex+1} 个位置`});
+    out.push({event:'action_scout',data,remaining:v.hand,removed:-1,points:0,label:`从${side==='left'?'左':'右'}端挖角${flip?'并翻面':''}，插入第 ${insertIndex+1} 个位置，回合结束`});
     if(state.players.length>2&&me.hasScoutAndShow)for(const c of R.findAllPlayableCombos(v.hand,v.combo))out.push({event:'action_scout_and_show',data:{scoutData:data,showIndices:c.indices},remaining:v.hand.filter((_,i)=>!c.indices.includes(i)),removed:c.cards.length-1,points:v.remaining.length,label:`挖角后演出 ${c.combo.label}`});
   }
   return out;
